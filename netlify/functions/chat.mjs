@@ -1,26 +1,32 @@
 
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+const MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+];
+
+const wait = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 export default async (request) => {
   if (request.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Only POST requests are allowed" }),
-      {
-        status: 405,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return json({ error: "Only POST requests are allowed" }, 405);
   }
 
   try {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is missing in Netlify" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      console.error("Missing GEMINI_API_KEY environment variable");
+      return json({
+        error: "API გასაღები Netlify-ში ვერ მოიძებნა.",
+      }, 500);
     }
 
     const body = await request.json();
@@ -28,126 +34,126 @@ export default async (request) => {
       ? body.messages
       : [];
 
-    if (messages.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No messages provided" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
     const contents = messages
       .filter(
-        (message) =>
-          ["user", "assistant", "model"].includes(message.role) &&
-          typeof message.content === "string" &&
-          message.content.trim() !== ""
+        (m) =>
+          ["user", "assistant", "model"].includes(m.role) &&
+          typeof m.content === "string" &&
+          m.content.trim()
       )
-      .map((message) => ({
+      .map((m) => ({
         role:
-          message.role === "assistant" || message.role === "model"
+          m.role === "assistant" || m.role === "model"
             ? "model"
             : "user",
-        parts: [{ text: message.content }],
+        parts: [{ text: m.content.trim() }],
       }));
 
-    if (contents.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No valid messages provided" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    if (!contents.length) {
+      return json({ error: "შეტყობინება ვერ მოიძებნა." }, 400);
     }
 
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text:
-                  "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
-                  "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
-                  "დაეხმარე მომხმარებელს მცენარის ამოცნობაში, მორწყვაში, " +
-                  "განათებაში, ნიადაგში, სასუქსა და დაავადებების ამოცნობაში. " +
-                  "თუ ინფორმაცია არასაკმარისია, დასვი დამაზუსტებელი კითხვა. " +
-                  "არ წარმოადგინო ვარაუდი დადასტურებულ ფაქტად.",
+    let lastError = "AI სერვისი დროებით მიუწვდომელია.";
+    let lastStatus = 503;
+
+    for (const model of MODELS) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt > 0) {
+            await wait(800);
+          }
+
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey,
               },
-            ],
-          },
-          contents,
-          generationConfig: {
-            maxOutputTokens: 500,
-          },
-        }),
+              body: JSON.stringify({
+                systemInstruction: {
+                  parts: [{
+                    text:
+                      "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
+                      "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
+                      "მისალმებასაც უპასუხე ბუნებრივად. " +
+                      "დაეხმარე მომხმარებელს მცენარეების ამოცნობაში, " +
+                      "მორწყვაში, განათებაში, ნიადაგსა და დაავადებებში. " +
+                      "თუ ინფორმაცია არასაკმარისია, დასვი კითხვა. " +
+                      "ვარაუდი ფაქტად არ წარმოადგინო.",
+                  }],
+                },
+                contents,
+                generationConfig: {
+                  maxOutputTokens: 500,
+                },
+              }),
+              signal: AbortSignal.timeout(25000),
+            }
+          );
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            lastStatus = response.status;
+            lastError =
+              data?.error?.message || "Gemini API request failed";
+
+            console.error(
+              `Gemini ${model} failed (${response.status}):`,
+              lastError
+            );
+
+            // ეს შეცდომები, როგორც წესი, გასაღების ან
+            // მოთხოვნის კონფიგურაციას უკავშირდება.
+            if ([400, 401, 403].includes(response.status)) {
+              return json({ error: lastError }, response.status);
+            }
+
+            // სხვა მოდელი ვცადოთ.
+            break;
+          }
+
+          const answer = data?.candidates?.[0]?.content?.parts
+            ?.map((part) => part.text || "")
+            .join("")
+            .trim();
+
+          if (answer) {
+            console.log(`PlantAI response generated by ${model}`);
+            return json({ answer });
+          }
+
+          lastError = "მოდელმა ცარიელი პასუხი დააბრუნა.";
+          lastStatus = 502;
+          break;
+        } catch (error) {
+          lastError = error?.message || "Unknown server error";
+          lastStatus = 503;
+
+          console.error(`Gemini ${model} error:`, lastError);
+
+          // ქსელის ან დროებითი სერვერული შეცდომისას
+          // შემდეგი ცდა ან მოდელი გამოვიყენოთ.
+        }
       }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error(
-        "Gemini API error:",
-        response.status,
-        JSON.stringify(data)
-      );
-
-      return new Response(
-        JSON.stringify({
-          error:
-            data?.error?.message ||
-            "Gemini API request failed",
-        }),
-        {
-          status: response.status,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
     }
 
-    const answer =
-      data?.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text || "")
-        .join("")
-        .trim();
+    console.error("All Gemini models failed:", lastError);
 
-    if (!answer) {
-      console.error("Gemini returned no text:", JSON.stringify(data));
-
-      return new Response(
-        JSON.stringify({ error: "Gemini returned an empty response" }),
-        {
-          status: 502,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    return new Response(JSON.stringify({ answer }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({
+      error:
+        "AI სერვისი ამჟამად გადატვირთულია ან მიუწვდომელია. " +
+        "გთხოვ, ცოტა ხანში სცადე ხელახლა.",
+    }, [429, 500, 502, 503, 504].includes(lastStatus)
+      ? 503
+      : lastStatus);
   } catch (error) {
     console.error("PlantAI function error:", error);
 
-    return new Response(
-      JSON.stringify({
-        error: "Server error. Please try again.",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return json({
+      error: "სერვერის შეცდომა. გთხოვ, ხელახლა სცადე.",
+    }, 500);
   }
 };
