@@ -1,108 +1,153 @@
 
-export default async (req) => {
-  if (req.method !== "POST") {
-    return Response.json(
-      { error: "გამოიყენე POST მოთხოვნა." },
-      { status: 405 }
-    );
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    return Response.json(
-      { error: "GEMINI_API_KEY ვერ მოიძებნა Netlify-ში." },
-      { status: 500 }
-    );
-  }
-
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json(
-      { error: "მოთხოვნის ფორმატი არასწორია." },
-      { status: 400 }
-    );
-  }
-
-  if (!Array.isArray(body.messages) || !body.messages.length) {
-    return Response.json(
-      { error: "ჯერ დაწერე კითხვა." },
-      { status: 400 }
-    );
-  }
-
-  const messages = body.messages
-    .slice(-12)
-    .filter(m =>
-      m &&
-      ["user", "assistant"].includes(m.role) &&
-      typeof m.content === "string"
-    )
-    .map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content.slice(0, 1500) }]
-    }));
-
-  if (!messages.length || messages[messages.length - 1].role !== "user") {
-    return Response.json(
-      { error: "ბოლო შეტყობინება მომხმარებლის კითხვა უნდა იყოს." },
-      { status: 400 }
+export default async (request) => {
+  if (request.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Only POST requests are allowed" }),
+      {
+        status: 405,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 
   try {
-    const upstream = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: "GEMINI_API_KEY is missing in Netlify" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const body = await request.json();
+    const messages = Array.isArray(body.messages)
+      ? body.messages
+      : [];
+
+    if (messages.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No messages provided" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const contents = messages
+      .filter(
+        (message) =>
+          ["user", "assistant", "model"].includes(message.role) &&
+          typeof message.content === "string" &&
+          message.content.trim() !== ""
+      )
+      .map((message) => ({
+        role:
+          message.role === "assistant" || message.role === "model"
+            ? "model"
+            : "user",
+        parts: [{ text: message.content }],
+      }));
+
+    if (contents.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No valid messages provided" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
       {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           "x-goog-api-key": apiKey,
-          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{
-              text: "შენ ხარ PlantAI, მცენარეების მოვლის დამხმარე. ყოველთვის უპასუხე ქართულად, მეგობრულად და პრაქტიკულად. დაეხმარე მორწყვაში, განათებაში, ნიადაგში, სასუქსა და გავრცელებული პრობლემების გაგებაში. თუ ინფორმაცია არასაკმარისია, დასვი დამაზუსტებელი კითხვა. სავარაუდო დაავადება ზუსტ დიაგნოზად არ წარმოაჩინო."
-            }]
+            parts: [
+              {
+                text:
+                  "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
+                  "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
+                  "დაეხმარე მომხმარებელს მცენარის ამოცნობაში, მორწყვაში, " +
+                  "განათებაში, ნიადაგში, სასუქსა და დაავადებების ამოცნობაში. " +
+                  "თუ ინფორმაცია არასაკმარისია, დასვი დამაზუსტებელი კითხვა. " +
+                  "არ წარმოადგინო ვარაუდი დადასტურებულ ფაქტად.",
+              },
+            ],
           },
-          contents: messages,
+          contents,
           generationConfig: {
-            maxOutputTokens: 500
-          }
-        })
+            maxOutputTokens: 500,
+          },
+        }),
       }
     );
 
-    const data = await upstream.json();
+    const data = await response.json();
 
-    if (!upstream.ok) {
-      console.error("Gemini API error:", upstream.status, data?.error?.message);
-      return Response.json(
-        { error: "Gemini-მ ვერ გვიპასუხა. გადაამოწმე API გასაღები და API-ის ლიმიტები." },
-        { status: 502 }
+    if (!response.ok) {
+      console.error(
+        "Gemini API error:",
+        response.status,
+        JSON.stringify(data)
+      );
+
+      return new Response(
+        JSON.stringify({
+          error:
+            data?.error?.message ||
+            "Gemini API request failed",
+        }),
+        {
+          status: response.status,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    const answer = data.candidates?.[0]?.content?.parts
-      ?.map(part => part.text || "")
-      .join("")
-      .trim();
+    const answer =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || "")
+        .join("")
+        .trim();
 
     if (!answer) {
-      return Response.json(
-        { error: "AI-მ ცარიელი პასუხი დააბრუნა. სცადე თავიდან." },
-        { status: 502 }
+      console.error("Gemini returned no text:", JSON.stringify(data));
+
+      return new Response(
+        JSON.stringify({ error: "Gemini returned an empty response" }),
+        {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    return Response.json({ answer });
+    return new Response(JSON.stringify({ answer }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
-    console.error("PlantAI error:", error?.message || "unknown");
-    return Response.json(
-      { error: "სერვერთან დაკავშირება ვერ მოხერხდა." },
-      { status: 500 }
+    console.error("PlantAI function error:", error);
+
+    return new Response(
+      JSON.stringify({
+        error: "Server error. Please try again.",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 };
