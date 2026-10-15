@@ -6,13 +6,9 @@ const json = (data, status = 200) =>
   });
 
 const MODELS = [
-  "gemini-3.8-flash",
-  "gemini-3.6-flash",
   "gemini-3.5-flash-lite",
+  "gemini-3.8-flash",
 ];
-
-const wait = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 export default async (request) => {
   if (request.method !== "POST") {
@@ -23,9 +19,9 @@ export default async (request) => {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.error("Missing GEMINI_API_KEY environment variable");
+      console.error("GEMINI_API_KEY is missing in Netlify");
       return json({
-        error: "API გასაღები Netlify-ში ვერ მოიძებნა.",
+        error: "API გასაღები ვერ მოიძებნა. შეამოწმე Netlify-ის პარამეტრები.",
       }, 500);
     }
 
@@ -39,7 +35,7 @@ export default async (request) => {
         (m) =>
           ["user", "assistant", "model"].includes(m.role) &&
           typeof m.content === "string" &&
-          m.content.trim()
+          m.content.trim() !== ""
       )
       .map((m) => ({
         role:
@@ -57,86 +53,73 @@ export default async (request) => {
     let lastStatus = 503;
 
     for (const model of MODELS) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          if (attempt > 0) {
-            await wait(800);
-          }
-
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-goog-api-key": apiKey,
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{
+                  text:
+                    "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
+                    "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
+                    "მისალმებასაც უპასუხე ბუნებრივად. " +
+                    "დაეხმარე მომხმარებელს მცენარის ამოცნობაში, " +
+                    "მორწყვაში, განათებაში, ნიადაგსა და დაავადებებში. " +
+                    "თუ ინფორმაცია არასაკმარისია, დასვი დამაზუსტებელი კითხვა. " +
+                    "ვარაუდი ფაქტად არ წარმოადგინო.",
+                }],
               },
-              body: JSON.stringify({
-                systemInstruction: {
-                  parts: [{
-                    text:
-                      "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
-                      "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
-                      "მისალმებასაც უპასუხე ბუნებრივად. " +
-                      "დაეხმარე მომხმარებელს მცენარეების ამოცნობაში, " +
-                      "მორწყვაში, განათებაში, ნიადაგსა და დაავადებებში. " +
-                      "თუ ინფორმაცია არასაკმარისია, დასვი კითხვა. " +
-                      "ვარაუდი ფაქტად არ წარმოადგინო.",
-                  }],
-                },
-                contents,
-                generationConfig: {
-                  maxOutputTokens: 500,
-                },
-              }),
-              signal: AbortSignal.timeout(25000),
-            }
+              contents,
+              generationConfig: {
+                maxOutputTokens: 400,
+              },
+            }),
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          lastStatus = response.status;
+          lastError =
+            data?.error?.message || "Gemini API request failed";
+
+          console.error(
+            `Gemini ${model} failed (${response.status}):`,
+            lastError
           );
 
-          const data = await response.json();
-
-          if (!response.ok) {
-            lastStatus = response.status;
-            lastError =
-              data?.error?.message || "Gemini API request failed";
-
-            console.error(
-              `Gemini ${model} failed (${response.status}):`,
-              lastError
-            );
-
-            // ეს შეცდომები, როგორც წესი, გასაღების ან
-            // მოთხოვნის კონფიგურაციას უკავშირდება.
-            if ([400, 401, 403].includes(response.status)) {
-              return json({ error: lastError }, response.status);
-            }
-
-            // სხვა მოდელი ვცადოთ.
-            break;
+          if ([400, 401, 403].includes(response.status)) {
+            return json({ error: lastError }, response.status);
           }
 
-          const answer = data?.candidates?.[0]?.content?.parts
-            ?.map((part) => part.text || "")
-            .join("")
-            .trim();
-
-          if (answer) {
-            console.log(`PlantAI response generated by ${model}`);
-            return json({ answer });
-          }
-
-          lastError = "მოდელმა ცარიელი პასუხი დააბრუნა.";
-          lastStatus = 502;
-          break;
-        } catch (error) {
-          lastError = error?.message || "Unknown server error";
-          lastStatus = 503;
-
-          console.error(`Gemini ${model} error:`, lastError);
-
-          // ქსელის ან დროებითი სერვერული შეცდომისას
-          // შემდეგი ცდა ან მოდელი გამოვიყენოთ.
+          continue;
         }
+
+        const answer = data?.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text || "")
+          .join("")
+          .trim();
+
+        if (answer) {
+          console.log(`PlantAI response generated by ${model}`);
+          return json({ answer });
+        }
+
+        lastError = "მოდელმა ცარიელი პასუხი დააბრუნა.";
+        lastStatus = 502;
+      } catch (error) {
+        lastError = error?.message || "Unknown error";
+        lastStatus = 503;
+
+        console.error(`Gemini ${model} error:`, lastError);
       }
     }
 
@@ -144,8 +127,8 @@ export default async (request) => {
 
     return json({
       error:
-        "AI სერვისი ამჟამად გადატვირთულია ან მიუწვდომელია. " +
-        "გთხოვ, ცოტა ხანში სცადე ხელახლა.",
+        "AI სერვისი დროებით მიუწვდომელია. " +
+        "გთხოვ, რამდენიმე წამში ხელახლა სცადე.",
     }, [429, 500, 502, 503, 504].includes(lastStatus)
       ? 503
       : lastStatus);
