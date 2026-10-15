@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f4f8ef">
+  <meta name="description" content="PlantAI — შენი ჭკვიანი დამხმარე მცენარეების მოვლაში. დასვი კითხვები ან ატვირთე მცენარის ფოტო.">
   <title>PlantAI — მცენარეების ჭკვიანი დამხმარე</title>
 
   <style>
@@ -21,6 +22,11 @@
 
     * { box-sizing: border-box; }
 
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
     body {
       margin: 0;
       background: var(--bg);
@@ -30,6 +36,10 @@
 
     button, input { font: inherit; }
     button { cursor: pointer; }
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 3px;
+    }
 
     .topbar {
       background: white;
@@ -270,6 +280,7 @@
       gap: 12px;
       padding: 21px 22px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .chat-header .panel-icon {
@@ -300,6 +311,7 @@
       min-height: 260px;
       max-height: 440px;
       overflow-y: auto;
+      overscroll-behavior: contain;
       background: #fcfdfb;
     }
 
@@ -356,6 +368,7 @@
     .chat-composer {
       border-top: 1px solid var(--border);
       background: white;
+      flex-shrink: 0;
     }
 
     .chat-photo-preview {
@@ -436,6 +449,7 @@
       color: var(--muted);
       font-size: 11px;
       line-height: 1.6;
+      flex-shrink: 0;
     }
 
     .features {
@@ -472,6 +486,15 @@
       font-size: 13px;
     }
 
+    /* მობილურის ჩატის ღილაკი — კომპიუტერზე დამალულია */
+    .mobile-chat-button {
+      display: none;
+    }
+
+    .chat-close {
+      display: none;
+    }
+
     @media (max-width: 800px) {
       .hero {
         grid-template-columns: 1fr;
@@ -479,43 +502,192 @@
       }
 
       .hero-art { min-height: 220px; }
+
       .workspace { grid-template-columns: 1fr; }
-      .chat-panel { min-height: 520px; }
+
       .features { grid-template-columns: 1fr; }
+
+      /* მობილურზე ჩატი დამალულია, სანამ ღილაკს არ დააჭერ */
+      .workspace > .chat-panel {
+        display: none;
+      }
+
+      .workspace > .chat-panel.mobile-chat-open {
+        display: flex;
+        position: fixed;
+        z-index: 1001;
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        width: auto;
+        height: auto;
+        height: min(620px, calc(100dvh - 90px));
+        max-height: calc(100vh - 90px);
+        min-height: 0;
+        margin: 0;
+        border-radius: 20px;
+        box-shadow: 0 12px 45px #18351e30;
+      }
+
+      .mobile-chat-open .chat-header {
+        padding: 14px;
+      }
+
+      .mobile-chat-open .messages {
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
+
+      .mobile-chat-open .chat-close {
+        display: grid;
+        place-items: center;
+        margin-left: auto;
+        flex-shrink: 0;
+        width: 38px;
+        height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        background: white;
+        color: var(--text);
+        font-size: 23px;
+        line-height: 1;
+      }
+
+      .mobile-chat-open .notice {
+        padding: 0 14px 10px;
+      }
+
+      .mobile-chat-open .chat-input {
+        gap: 6px;
+        padding: 9px;
+      }
+
+      .mobile-chat-open .chat-input input[type="text"] {
+        padding: 11px 9px;
+        font-size: 16px;
+      }
+
+      .mobile-chat-open .chat-input button[type="submit"] {
+        padding: 12px 10px;
+        font-size: 13px;
+      }
+
+      .mobile-chat-open .attach-btn {
+        flex: 0 0 38px;
+        width: 38px;
+        height: 42px;
+      }
+
+      .mobile-chat-open .msg.user {
+        max-width: 92%;
+      }
+
+      .mobile-chat-open .message-image {
+        max-width: 240px;
+        max-height: 240px;
+      }
+
+      /* მრგვალი ჩატის ღილაკი */
+      .mobile-chat-button {
+        display: grid;
+        place-items: center;
+        position: fixed;
+        z-index: 1002;
+        right: 18px;
+        bottom: 18px;
+        width: 56px;
+        height: 56px;
+        border: none;
+        border-radius: 50%;
+        background: var(--green);
+        color: white;
+        font-size: 25px;
+        box-shadow: 0 5px 18px #20542d35;
+        -webkit-tap-highlight-color: transparent;
+        transition: transform .15s, background .2s;
+      }
+
+      .mobile-chat-button:active {
+        transform: scale(.95);
+      }
+
+      body.chat-open .mobile-chat-button {
+        background: var(--green-dark);
+      }
+
+      body.chat-open .mobile-chat-button {
+        display: none;
+      }
     }
 
     @media (max-width: 440px) {
       .nav { padding: 12px 15px; }
       .brand { font-size: 20px; }
-      .nav-tag { font-size: 11px; padding: 8px; }
+      .brand-icon {
+        width: 38px;
+        height: 38px;
+      }
+
+      .nav-tag {
+        font-size: 11px;
+        padding: 8px;
+        text-align: center;
+      }
 
       .hero, .section {
         padding-left: 15px;
         padding-right: 15px;
       }
 
+      .hero {
+        padding-top: 28px;
+        gap: 22px;
+      }
+
+      .hero p {
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
       .panel { padding: 18px; }
       .chat-panel { padding: 0; }
 
-      .chat-input {
+      .mobile-chat-open .panel-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 21px;
+        border-radius: 12px;
+      }
+
+      .mobile-chat-open .chat-header h3 {
+        font-size: 17px;
+      }
+
+      .mobile-chat-open .online {
+        font-size: 11px;
+      }
+
+      .mobile-chat-open .chat-input {
         gap: 6px;
-        padding: 9px;
+        padding: 8px;
       }
 
-      .chat-input input[type="text"] {
-        padding: 11px 9px;
-        font-size: 13px;
+      .mobile-chat-open .chat-input input[type="text"] {
+        padding: 11px 8px;
+        font-size: 16px;
       }
 
-      .chat-input button[type="submit"] {
-        padding: 12px 10px;
-        font-size: 13px;
+      .mobile-chat-open .chat-input button[type="submit"] {
+        padding: 12px 9px;
+        font-size: 12px;
       }
 
-      .attach-btn {
-        flex-basis: 37px;
-        width: 37px;
-        height: 42px;
+      .mobile-chat-open .attach-btn {
+        flex-basis: 36px;
+        width: 36px;
+        height: 41px;
+        font-size: 18px;
       }
 
       .msg.user { max-width: 92%; }
@@ -523,6 +695,15 @@
       .message-image {
         max-width: 240px;
         max-height: 280px;
+      }
+    }
+
+    /* მოწყობილობებზე, სადაც ვერტიკალური ეკრანი მოკლეა */
+    @media (max-width: 800px) and (max-height: 550px) {
+      .workspace > .chat-panel.mobile-chat-open {
+        height: calc(100dvh - 24px);
+        max-height: calc(100vh - 24px);
+        bottom: 12px;
       }
     }
   </style>
@@ -594,13 +775,19 @@
           </button>
         </section>
 
-        <section class="panel chat-panel">
+        <section class="panel chat-panel" id="chatPanel">
           <div class="chat-header">
             <div class="panel-icon">💬</div>
             <div>
               <h3>PlantAI ჩატი</h3>
               <div class="online">მცენარეების დამხმარე</div>
             </div>
+            <button
+              type="button"
+              class="chat-close"
+              id="closeMobileChat"
+              aria-label="ჩატის დახურვა"
+            >×</button>
           </div>
 
           <div class="messages" id="messages" aria-live="polite">
@@ -669,6 +856,15 @@
 
   <footer>🌿 PlantAI — იზრუნე მწვანე სამყაროზე</footer>
 
+  <!-- მობილურის მცურავი ჩატის ღილაკი -->
+  <button
+    type="button"
+    class="mobile-chat-button"
+    id="mobileChatButton"
+    aria-label="PlantAI ჩატის გახსნა"
+    aria-expanded="false"
+  >💬</button>
+
   <script>
     const fileInput = document.getElementById('photo');
     const preview = document.getElementById('preview');
@@ -687,6 +883,10 @@
     const chatInput = document.getElementById('chatInput');
     const sendButton = chatForm.querySelector('button[type="submit"]');
     const analyzeButton = document.getElementById('analyze');
+
+    const chatPanel = document.getElementById('chatPanel');
+    const mobileChatButton = document.getElementById('mobileChatButton');
+    const closeMobileChat = document.getElementById('closeMobileChat');
 
     const chatHistory = [];
     let pendingFile = null;
@@ -759,7 +959,52 @@
 
     removeChatPhoto.addEventListener('click', clearSelectedFile);
 
-    // მესიჯის დამატება — მომხმარებლის ფოტო გამოჩნდება გამოსახულებად
+    // მობილურის ჩატის მართვა
+    function setMobileChat(open) {
+      if (window.innerWidth > 800) return;
+
+      chatPanel.classList.toggle('mobile-chat-open', open);
+      document.body.classList.toggle('chat-open', open);
+
+      mobileChatButton.setAttribute('aria-expanded', String(open));
+      mobileChatButton.setAttribute(
+        'aria-label',
+        open ? 'ჩატის დახურვა' : 'PlantAI ჩატის გახსნა'
+      );
+
+      mobileChatButton.textContent = open ? '×' : '💬';
+
+      if (open) {
+        setTimeout(() => {
+          if (window.innerWidth <= 800) chatInput.focus();
+        }, 150);
+      }
+    }
+
+    mobileChatButton.addEventListener('click', () => {
+      const isOpen = chatPanel.classList.contains('mobile-chat-open');
+      setMobileChat(!isOpen);
+    });
+
+    closeMobileChat.addEventListener('click', () => {
+      setMobileChat(false);
+    });
+
+    // ეკრანის ზომის შეცვლისას ჩატის მდგომარეობის გასწორება
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 800) {
+        chatPanel.classList.remove('mobile-chat-open');
+        document.body.classList.remove('chat-open');
+        mobileChatButton.textContent = '💬';
+        mobileChatButton.setAttribute('aria-expanded', 'false');
+        mobileChatButton.setAttribute(
+          'aria-label',
+          'PlantAI ჩატის გახსნა'
+        );
+      }
+    });
+
+    // მესიჯის დამატება — ფოტო გამოჩნდება გამოსახულებად
     function addMsg(text, who, imageUrl = null, imageName = '') {
       const div = document.createElement('div');
       div.className = 'msg ' + who;
@@ -863,8 +1108,6 @@
 
       const userText = question || 'გააანალიზე ატვირთული მცენარის ფოტო.';
 
-      // ფოტოს მესიჯში ვაჩვენებთ რეალურ სურათს და არა Base64 კოდს.
-      // ცალკე URL ინახება, რათა მესიჯის ფოტო არ გაქრეს preview-ის გასუფთავებისას.
       const messageImageUrl = selectedFile
         ? URL.createObjectURL(selectedFile)
         : null;
@@ -925,6 +1168,11 @@
       if (!chatInput.value.trim()) {
         chatInput.value =
           'გააანალიზე ეს მცენარის ფოტო. აღწერე ხილული ნიშნები, შესაძლო პრობლემები და მოვლის რჩევები.';
+      }
+
+      // მობილურზე ჩატი ავტომატურად გაიხსნას ფოტოს ანალიზისას
+      if (window.innerWidth <= 800) {
+        setMobileChat(true);
       }
 
       chatForm.requestSubmit();
