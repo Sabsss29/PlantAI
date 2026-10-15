@@ -6,26 +6,28 @@ const json = (data, status = 200) =>
   });
 
 const MODELS = [
-  "gemini-3.5-flash-lite",
-  "gemini-3.8-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
 ];
 
 export default async (request) => {
   if (request.method !== "POST") {
-    return json({ error: "Only POST requests are allowed" }, 405);
+    return json({ error: "მხოლოდ POST მოთხოვნაა დაშვებული." }, 405);
   }
 
   try {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.error("GEMINI_API_KEY is missing in Netlify");
+      console.error("GEMINI_API_KEY is missing");
+
       return json({
         error: "API გასაღები ვერ მოიძებნა. შეამოწმე Netlify-ის პარამეტრები.",
       }, 500);
     }
 
     const body = await request.json();
+
     const messages = Array.isArray(body.messages)
       ? body.messages
       : [];
@@ -45,11 +47,54 @@ export default async (request) => {
         parts: [{ text: m.content.trim() }],
       }));
 
-    if (!contents.length) {
-      return json({ error: "შეტყობინება ვერ მოიძებნა." }, 400);
+    const image = body.image;
+
+    if (image != null) {
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+      ];
+
+      if (
+        typeof image !== "object" ||
+        !allowedTypes.includes(image.mimeType) ||
+        typeof image.data !== "string" ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data) ||
+        image.data.length > 6_000_000
+      ) {
+        return json({
+          error: "ფოტოს ფორმატი ან ზომა არასწორია. გამოიყენე JPG, PNG ან WEBP ფოტო მაქსიმუმ 4 MB ზომით.",
+        }, 400);
+      }
+
+      if (!contents.some((item) => item.role === "user")) {
+        contents.push({
+          role: "user",
+          parts: [{
+            text: "გააანალიზე ატვირთული მცენარის ფოტო.",
+          }],
+        });
+      }
+
+      const lastUserMessage = [...contents]
+        .reverse()
+        .find((item) => item.role === "user");
+
+      lastUserMessage.parts.push({
+        inlineData: {
+          mimeType: image.mimeType,
+          data: image.data,
+        },
+      });
     }
 
-    let lastError = "AI სერვისი დროებით მიუწვდომელია.";
+    if (!contents.length) {
+      return json({
+        error: "შეტყობინება ვერ მოიძებნა.",
+      }, 400);
+    }
+
     let lastStatus = 503;
 
     for (const model of MODELS) {
@@ -68,19 +113,24 @@ export default async (request) => {
                   text:
                     "შენ ხარ PlantAI — მცენარეების მოვლის დამხმარე. " +
                     "უპასუხე ქართულად, მეგობრულად და გასაგებად. " +
-                    "მისალმებასაც უპასუხე ბუნებრივად. " +
-                    "დაეხმარე მომხმარებელს მცენარის ამოცნობაში, " +
-                    "მორწყვაში, განათებაში, ნიადაგსა და დაავადებებში. " +
-                    "თუ ინფორმაცია არასაკმარისია, დასვი დამაზუსტებელი კითხვა. " +
-                    "ვარაუდი ფაქტად არ წარმოადგინო.",
+                    "მისალმებას უპასუხე ბუნებრივად. " +
+                    "თუ მომხმარებელი ფოტოს აგზავნის, გააანალიზე ფოტოს " +
+                    "რეალური ვიზუალური შინაარსი. შეეცადე ამოიცნო მცენარე, " +
+                    "აღწერო ფოთლების ხილული პრობლემები, ჩამოთვალო " +
+                    "დაავადების ან დაზიანების შესაძლო მიზეზები და გასცე " +
+                    "პრაქტიკული რჩევები მორწყვაზე, განათებასა და ნიადაგზე. " +
+                    "არ წარმოადგინო ვარაუდი დადასტურებულ დიაგნოზად. " +
+                    "თუ ფოტო ბუნდოვანია ან ინფორმაცია არასაკმარისია, " +
+                    "აუხსენი მომხმარებელს გაურკვევლობა და დასვი კითხვა. " +
+                    "არ მოიგონო ფოტოზე უხილავი ნიშნები."
                 }],
               },
               contents,
               generationConfig: {
-                maxOutputTokens: 400,
+                maxOutputTokens: 700,
               },
             }),
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(12000),
           }
         );
 
@@ -88,16 +138,17 @@ export default async (request) => {
 
         if (!response.ok) {
           lastStatus = response.status;
-          lastError =
-            data?.error?.message || "Gemini API request failed";
 
           console.error(
             `Gemini ${model} failed (${response.status}):`,
-            lastError
+            data?.error?.message || "API request failed"
           );
 
           if ([400, 401, 403].includes(response.status)) {
-            return json({ error: lastError }, response.status);
+            return json({
+              error:
+                "Gemini API მოთხოვნა ვერ შესრულდა. შეამოწმე API გასაღები და მოდელის ხელმისაწვდომობა.",
+            }, response.status);
           }
 
           continue;
@@ -113,17 +164,21 @@ export default async (request) => {
           return json({ answer });
         }
 
-        lastError = "მოდელმა ცარიელი პასუხი დააბრუნა.";
         lastStatus = 502;
+
+        console.error(
+          `Gemini ${model} returned no text answer`
+        );
+
       } catch (error) {
-        lastError = error?.message || "Unknown error";
         lastStatus = 503;
 
-        console.error(`Gemini ${model} error:`, lastError);
+        console.error(
+          `Gemini ${model} error:`,
+          error?.message
+        );
       }
     }
-
-    console.error("All Gemini models failed:", lastError);
 
     return json({
       error:
@@ -132,6 +187,7 @@ export default async (request) => {
     }, [429, 500, 502, 503, 504].includes(lastStatus)
       ? 503
       : lastStatus);
+
   } catch (error) {
     console.error("PlantAI function error:", error);
 
