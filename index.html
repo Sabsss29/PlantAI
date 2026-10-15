@@ -1,284 +1,938 @@
 
-const fileInput = document.getElementById('photo');
-const preview = document.getElementById('preview');
-const photoResult = document.getElementById('photoResult');
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f8ef">
+  <title>PlantAI — მცენარეების ჭკვიანი დამხმარე</title>
 
-const chatPhoto = document.getElementById('chatPhoto');
-const attachPhoto = document.getElementById('attachPhoto');
-const chatPhotoPreview = document.getElementById('chatPhotoPreview');
-const chatPhotoThumb = document.getElementById('chatPhotoThumb');
-const chatPhotoName = document.getElementById('chatPhotoName');
-const removeChatPhoto = document.getElementById('removeChatPhoto');
+  <style>
+    :root {
+      --green: #2f713e;
+      --green-dark: #20542d;
+      --green-light: #e7f2e3;
+      --bg: #f4f8ef;
+      --text: #203126;
+      --muted: #718073;
+      --border: #e2e9df;
+      --white: #ffffff;
+    }
 
-const messages = document.getElementById('messages');
-const chatForm = document.getElementById('chatForm');
-const chatInput = document.getElementById('chatInput');
-const sendButton = chatForm.querySelector('button[type="submit"]');
-const analyzeButton = document.getElementById('analyze');
+    * {
+      box-sizing: border-box;
+    }
 
-const chatHistory = [];
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Noto Sans Georgian", sans-serif;
+    }
 
-let pendingFile = null;
-let previewUrl = null;
-let sending = false;
+    button, input {
+      font: inherit;
+    }
 
-function setSelectedFile(file) {
-  if (!file) return;
+    button {
+      cursor: pointer;
+    }
 
-  const allowedTypes = [
-    'image/jpeg',
-    'image/png',
-    'image/webp'
-  ];
+    .topbar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
 
-  if (!allowedTypes.includes(file.type)) {
-    alert('აირჩიე JPG, PNG ან WEBP ფორმატის ფოტო.');
-    return;
-  }
+    .nav {
+      max-width: 1120px;
+      margin: auto;
+      padding: 16px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
 
-  if (file.size > 4 * 1024 * 1024) {
-    alert('ფოტოს ზომა მაქსიმუმ 4 MB უნდა იყოს.');
-    return;
-  }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 23px;
+      font-weight: 800;
+      color: var(--green-dark);
+    }
 
-  pendingFile = file;
+    .brand-icon {
+      background: var(--green-light);
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+    }
 
-  if (previewUrl) {
-    URL.revokeObjectURL(previewUrl);
-  }
+    .nav-tag {
+      font-size: 13px;
+      color: var(--green);
+      background: var(--green-light);
+      border-radius: 30px;
+      padding: 9px 13px;
+    }
 
-  previewUrl = URL.createObjectURL(file);
+    .hero {
+      max-width: 1120px;
+      margin: auto;
+      padding: 54px 22px 34px;
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 35px;
+      align-items: center;
+    }
 
-  // დიდი ფოტოს ბლოკი
-  preview.src = previewUrl;
-  preview.style.display = 'block';
+    .eyebrow {
+      color: var(--green);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: .3px;
+    }
 
-  // ჩატის ველი
-  chatPhotoThumb.src = previewUrl;
-  chatPhotoName.textContent = file.name;
-  chatPhotoPreview.style.display = 'flex';
+    h1 {
+      font-size: clamp(34px, 5vw, 57px);
+      line-height: 1.18;
+      margin: 16px 0;
+      letter-spacing: -1.5px;
+    }
 
-  photoResult.style.display = 'none';
-}
+    h1 span {
+      color: var(--green);
+    }
 
-function clearSelectedFile() {
-  pendingFile = null;
+    .hero p {
+      font-size: 17px;
+      line-height: 1.8;
+      color: var(--muted);
+      max-width: 570px;
+    }
 
-  fileInput.value = '';
-  chatPhoto.value = '';
+    .hero-art {
+      min-height: 280px;
+      border-radius: 30px;
+      background: linear-gradient(145deg, #dcebd4, #f8f4df);
+      display: grid;
+      place-items: center;
+      position: relative;
+      overflow: hidden;
+    }
 
-  preview.removeAttribute('src');
-  preview.style.display = 'none';
+    .plant-emoji {
+      font-size: clamp(100px, 18vw, 175px);
+      filter: drop-shadow(0 15px 12px #527a3b22);
+    }
 
-  chatPhotoThumb.removeAttribute('src');
-  chatPhotoPreview.style.display = 'none';
+    .floating-note {
+      position: absolute;
+      background: white;
+      padding: 13px 16px;
+      border-radius: 15px;
+      box-shadow: 0 8px 28px #244c2014;
+      font-size: 13px;
+    }
 
-  if (previewUrl) {
-    URL.revokeObjectURL(previewUrl);
-    previewUrl = null;
-  }
-}
+    .note-one {
+      left: 15px;
+      top: 24px;
+    }
 
-// ფოტოს არჩევა ორივე ადგილიდან
-fileInput.addEventListener('change', () => {
-  setSelectedFile(fileInput.files[0]);
-});
+    .note-two {
+      right: 15px;
+      bottom: 24px;
+    }
 
-chatPhoto.addEventListener('change', () => {
-  setSelectedFile(chatPhoto.files[0]);
-});
+    .section {
+      max-width: 1120px;
+      margin: auto;
+      padding: 18px 22px 65px;
+    }
 
-// 📎 ღილაკი
-attachPhoto.addEventListener('click', () => {
-  if (!sending) {
-    chatPhoto.click();
-  }
-});
+    .section-heading {
+      margin-bottom: 25px;
+    }
 
-// ფოტოს წაშლა
-removeChatPhoto.addEventListener('click', clearSelectedFile);
+    .section-heading h2 {
+      margin: 0 0 9px;
+      font-size: clamp(25px, 4vw, 35px);
+    }
 
-// დიდი ფოტოს ბლოკის ღილაკი
-analyzeButton.addEventListener('click', () => {
-  if (!pendingFile) {
-    alert('ჯერ ატვირთე მცენარის ფოტო.');
-    return;
-  }
+    .section-heading p {
+      color: var(--muted);
+      line-height: 1.7;
+      margin: 0;
+    }
 
-  if (!chatInput.value.trim()) {
-    chatInput.value =
-      'გააანალიზე ეს ფოტო: ამოიცანი მცენარე, ახსენი ფოთლების შესაძლო პრობლემები, დაავადების მიზეზები და მომეცი მოვლის რჩევები.';
-  }
+    .workspace {
+      display: grid;
+      grid-template-columns: .8fr 1.2fr;
+      gap: 22px;
+      align-items: stretch;
+    }
 
-  chatForm.requestSubmit();
-});
+    .panel {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 23px;
+      padding: 24px;
+      box-shadow: 0 10px 35px #274c2008;
+      min-width: 0;
+    }
 
-// ჩატში შეტყობინების დამატება
-function addMsg(text, who) {
-  const d = document.createElement('div');
+    .panel-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--green-light);
+      display: grid;
+      place-items: center;
+      border-radius: 15px;
+      font-size: 24px;
+      margin-bottom: 15px;
+    }
 
-  d.className = 'msg ' + who;
-  d.textContent = text;
+    .panel h3 {
+      margin: 0 0 10px;
+      font-size: 21px;
+    }
 
-  messages.appendChild(d);
-  messages.scrollTop = messages.scrollHeight;
+    .panel-description {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 0 0 20px;
+    }
 
-  return d;
-}
+    .upload-area {
+      border: 2px dashed #cbdcc5;
+      background: #f9fcf7;
+      border-radius: 17px;
+      padding: 22px 14px;
+      text-align: center;
+    }
 
-// ფოტოს Base64 ფორმატში გადაყვანა
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+    .upload-symbol {
+      font-size: 35px;
+      margin-bottom: 8px;
+    }
 
-    reader.onload = () => {
-      const result = reader.result;
+    .upload-area strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
 
-      if (
-        typeof result !== 'string' ||
-        !result.includes(',')
-      ) {
-        reject(new Error('ფოტოს წაკითხვა ვერ მოხერხდა.'));
+    .upload-area small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .preview {
+      display: none;
+      width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      margin-top: 17px;
+      border-radius: 12px;
+      background: #edf2e9;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 12px;
+      background: var(--green);
+      color: white;
+      padding: 13px 17px;
+      font-weight: 700;
+      transition: background .2s;
+    }
+
+    .btn:hover {
+      background: var(--green-dark);
+    }
+
+    .btn:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+
+    .btn-full {
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    .secondary-btn {
+      border: 1px solid var(--border);
+      background: white;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 12px;
+    }
+
+    .result {
+      display: none;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-top: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 580px;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 21px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chat-header .panel-icon {
+      margin: 0;
+      flex-shrink: 0;
+    }
+
+    .chat-header h3 {
+      margin: 0 0 5px;
+    }
+
+    .online {
+      color: var(--green);
+      font-size: 12px;
+    }
+
+    .online::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #49a85b;
+      margin-right: 5px;
+    }
+
+    .messages {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+      flex: 1;
+      min-height: 260px;
+      max-height: 440px;
+      overflow-y: auto;
+      background: #fcfdfb;
+    }
+
+    .msg {
+      padding: 13px 15px;
+      border-radius: 15px;
+      font-size: 14px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-width: 92%;
+    }
+
+    .msg.bot {
+      background: #edf4e9;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg.user {
+      background: var(--green);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-composer {
+      border-top: 1px solid var(--border);
+      background: white;
+    }
+
+    .chat-photo-preview {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 13px;
+      background: #f7faf5;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chat-photo-preview img {
+      width: 48px;
+      height: 48px;
+      border-radius: 9px;
+      object-fit: cover;
+    }
+
+    .chat-photo-info {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-photo-info strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .chat-photo-remove {
+      border: 0;
+      background: #f8e9e5;
+      color: #983c2c;
+      padding: 9px 12px;
+      border-radius: 9px;
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      padding: 13px;
+    }
+
+    .attach-btn {
+      flex: 0 0 43px;
+      width: 43px;
+      height: 45px;
+      border: none;
+      border-radius: 12px;
+      background: var(--green-light);
+      font-size: 20px;
+      color: var(--green-dark);
+    }
+
+    .chat-input input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px;
+      outline: none;
+      background: white;
+    }
+
+    .chat-input input[type="text"]:focus {
+      border-color: #83ae7b;
+      box-shadow: 0 0 0 3px #2f713e10;
+    }
+
+    .chat-input button[type="submit"] {
+      padding: 13px 15px;
+      flex-shrink: 0;
+    }
+
+    .notice {
+      margin: 0;
+      padding: 0 20px 17px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 23px;
+    }
+
+    .feature {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 17px;
+      padding: 20px;
+    }
+
+    .feature-icon {
+      font-size: 26px;
+      margin-bottom: 10px;
+    }
+
+    .feature strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .feature p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      margin: 0;
+    }
+
+    footer {
+      text-align: center;
+      padding: 25px 20px;
+      border-top: 1px solid var(--border);
+      background: white;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 800px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 35px;
+      }
+
+      .hero-art {
+        min-height: 220px;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .chat-panel {
+        min-height: 520px;
+      }
+
+      .features {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 440px) {
+      .nav {
+        padding: 12px 15px;
+      }
+
+      .brand {
+        font-size: 20px;
+      }
+
+      .nav-tag {
+        font-size: 11px;
+        padding: 8px;
+      }
+
+      .hero, .section {
+        padding-left: 15px;
+        padding-right: 15px;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .chat-panel {
+        padding: 0;
+      }
+
+      .chat-input {
+        gap: 6px;
+        padding: 9px;
+      }
+
+      .chat-input input[type="text"] {
+        padding: 11px 9px;
+        font-size: 13px;
+      }
+
+      .chat-input button[type="submit"] {
+        padding: 12px 10px;
+        font-size: 13px;
+      }
+
+      .attach-btn {
+        flex-basis: 37px;
+        width: 37px;
+        height: 42px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <nav class="nav">
+      <div class="brand">
+        <div class="brand-icon">🌿</div>
+        PlantAI
+      </div>
+      <div class="nav-tag">ჭკვიანი მცენარეების დამხმარე</div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <div class="eyebrow">🌱 შენი მცენარეების ციფრული მეგობარი</div>
+        <h1>იზრუნე მცენარეებზე <span>უფრო მარტივად</span></h1>
+        <p>
+          დაუსვი კითხვები მცენარეების მოვლაზე ან ატვირთე ფოთლების ფოტო.
+          PlantAI დაგეხმარება შესაძლო პრობლემების ამოცნობასა და მოვლის
+          სწორი ნაბიჯების შერჩევაში.
+        </p>
+      </div>
+
+      <div class="hero-art">
+        <div class="floating-note note-one">🌿 მცენარის მოვლა</div>
+        <div class="plant-emoji">🪴</div>
+        <div class="floating-note note-two">✨ AI დამხმარე</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading">
+        <h2>რით დაგეხმარო დღეს?</h2>
+        <p>აირჩიე ფოტო ან დაწერე შენი კითხვა — დაიწყე აქედან.</p>
+      </div>
+
+      <div class="workspace">
+        <section class="panel">
+          <div class="panel-icon">📸</div>
+          <h3>მცენარის ფოტოს შემოწმება</h3>
+          <p class="panel-description">
+            ატვირთე მკაფიო ფოტო, სადაც მცენარის ფოთლები კარგად ჩანს.
+            AI შეეცდება ამოიცნოს მცენარე და შესაძლო პრობლემები.
+          </p>
+
+          <div class="upload-area">
+            <div class="upload-symbol">🌿</div>
+            <strong>აირჩიე ფოტო შენი მოწყობილობიდან</strong>
+            <small>JPG, PNG ან WEBP · მაქსიმუმ 4 MB</small>
+
+            <input id="photo" class="file-input" type="file"
+              accept="image/jpeg,image/png,image/webp">
+
+            <button type="button" class="btn btn-full" id="choosePhoto">
+              ფოტოს არჩევა
+            </button>
+
+            <img id="preview" class="preview" alt="ატვირთული მცენარის ფოტო">
+            <div id="photoResult" class="result" aria-live="polite"></div>
+          </div>
+
+          <button type="button" class="btn btn-full" id="analyze">
+            🔍 ფოტოს ანალიზი
+          </button>
+        </section>
+
+        <section class="panel chat-panel">
+          <div class="chat-header">
+            <div class="panel-icon">💬</div>
+            <div>
+              <h3>PlantAI ჩატი</h3>
+              <div class="online">მცენარეების დამხმარე</div>
+            </div>
+          </div>
+
+          <div class="messages" id="messages" aria-live="polite">
+            <div class="msg bot">
+              გამარჯობა! 🌿 მე PlantAI ვარ.
+
+              შემიძლია დაგეხმარო მცენარის მოვლაში, მორწყვაში, განათებაში
+              და ფოთლებზე არსებული პრობლემების გარკვევაში.
+
+              შეგიძლია მომწერო კითხვა ან ატვირთო მცენარის ფოტო.
+            </div>
+          </div>
+
+          <div class="chat-composer">
+            <div id="chatPhotoPreview" class="chat-photo-preview">
+              <img id="chatPhotoThumb" alt="არჩეული ფოტო">
+              <div class="chat-photo-info">
+                <strong>ფოტო არჩეულია 🌿</strong>
+                <div id="chatPhotoName"></div>
+              </div>
+              <button type="button" id="removeChatPhoto"
+                class="chat-photo-remove" aria-label="ფოტოს წაშლა">✕</button>
+            </div>
+
+            <form class="chat-input" id="chatForm">
+              <input type="file" id="chatPhoto"
+                accept="image/jpeg,image/png,image/webp" hidden>
+
+              <button type="button" class="attach-btn" id="attachPhoto"
+                title="ფოტოს ატვირთვა" aria-label="ფოტოს ატვირთვა">📎</button>
+
+              <input id="chatInput" type="text"
+                placeholder="დაწერე კითხვა..." autocomplete="off"
+                maxlength="1500">
+
+              <button class="btn" type="submit">გაგზავნა</button>
+            </form>
+          </div>
+
+          <p class="notice">
+            AI რჩევები მხოლოდ ზოგადი დახმარებაა. ფოტოდან დაავადების
+            ზუსტი დიაგნოზი ყოველთვის შესაძლებელი არ არის.
+          </p>
+        </section>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">🌱</div>
+          <strong>მცენარის ამოცნობა</strong>
+          <p>ფოტოს მიხედვით მცენარის შესაძლო სახეობისა და ხილული ნიშნების შეფასება.</p>
+        </div>
+
+        <div class="feature">
+          <div class="feature-icon">💧</div>
+          <strong>მოვლის რჩევები</strong>
+          <p>დახმარება მორწყვის, განათებისა და ნიადაგის საკითხებში.</p>
+        </div>
+
+        <div class="feature">
+          <div class="feature-icon">💬</div>
+          <strong>კითხვები და პასუხები</strong>
+          <p>დაუსვი კითხვები მცენარეებს და მიიღე გასაგები რეკომენდაციები.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>🌿 PlantAI — იზრუნე მწვანე სამყაროზე</footer>
+
+  <script>
+    const fileInput = document.getElementById('photo');
+    const preview = document.getElementById('preview');
+    const photoResult = document.getElementById('photoResult');
+    const choosePhoto = document.getElementById('choosePhoto');
+
+    const chatPhoto = document.getElementById('chatPhoto');
+    const attachPhoto = document.getElementById('attachPhoto');
+    const chatPhotoPreview = document.getElementById('chatPhotoPreview');
+    const chatPhotoThumb = document.getElementById('chatPhotoThumb');
+    const chatPhotoName = document.getElementById('chatPhotoName');
+    const removeChatPhoto = document.getElementById('removeChatPhoto');
+
+    const messages = document.getElementById('messages');
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = chatForm.querySelector('button[type="submit"]');
+    const analyzeButton = document.getElementById('analyze');
+
+    const chatHistory = [];
+    let pendingFile = null;
+    let previewUrl = null;
+    let sending = false;
+
+    function setSelectedFile(file) {
+      if (!file) return;
+
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+      if (!allowedTypes.includes(file.type)) {
+        alert('აირჩიე JPG, PNG ან WEBP ფორმატის ფოტო.');
         return;
       }
 
-      resolve(result.split(',')[1]);
-    };
+      if (file.size > 4 * 1024 * 1024) {
+        alert('ფოტოს ზომა მაქსიმუმ 4 MB უნდა იყოს.');
+        return;
+      }
 
-    reader.onerror = () => {
-      reject(new Error('ფოტოს წაკითხვა ვერ მოხერხდა.'));
-    };
+      pendingFile = file;
 
-    reader.readAsDataURL(file);
-  });
-}
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(file);
 
-// ტექსტური ჩატი და ფოტოს ანალიზი
-chatForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
+      preview.src = previewUrl;
+      preview.style.display = 'block';
 
-  if (sending) return;
+      chatPhotoThumb.src = previewUrl;
+      chatPhotoName.textContent = file.name;
+      chatPhotoPreview.style.display = 'flex';
 
-  const selectedFile = pendingFile;
-  const question = chatInput.value.trim();
-
-  if (!question && !selectedFile) {
-    chatInput.focus();
-    return;
-  }
-
-  if (question.length > 1500) {
-    addMsg(
-      'გთხოვ, კითხვა 1500 სიმბოლოზე მოკლე იყოს.',
-      'bot'
-    );
-    return;
-  }
-
-  const userText = question ||
-    'გთხოვ, გააანალიზე ატვირთული მცენარის ფოტო.';
-
-  addMsg(
-    userText +
-      (selectedFile ? '\n📷 ფოტო: ' + selectedFile.name : ''),
-    'user'
-  );
-
-  const userMessage = {
-    role: 'user',
-    content: userText
-  };
-
-  chatHistory.push(userMessage);
-
-  chatInput.value = '';
-  sending = true;
-
-  chatInput.disabled = true;
-  sendButton.disabled = true;
-  attachPhoto.disabled = true;
-  analyzeButton.disabled = true;
-
-  const loading = addMsg(
-    selectedFile
-      ? 'ფოტოს ვაანალიზებ... 🌿'
-      : 'ვფიქრობ... 🌿',
-    'bot'
-  );
-
-  try {
-    let image = null;
-
-    if (selectedFile) {
-      image = {
-        mimeType: selectedFile.type,
-        data: await fileToBase64(selectedFile)
-      };
+      photoResult.style.display = 'none';
+      photoResult.textContent = '';
     }
 
-    const res = await fetch('/.netlify/functions/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        messages: chatHistory.slice(-12),
-        image
-      })
+    function clearSelectedFile() {
+      pendingFile = null;
+      fileInput.value = '';
+      chatPhoto.value = '';
+
+      preview.removeAttribute('src');
+      preview.style.display = 'none';
+
+      chatPhotoThumb.removeAttribute('src');
+      chatPhotoPreview.style.display = 'none';
+
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
+    }
+
+    choosePhoto.addEventListener('click', () => {
+      if (!sending) fileInput.click();
     });
 
-    const data = await res.json();
+    fileInput.addEventListener('change', () => {
+      setSelectedFile(fileInput.files[0]);
+    });
 
-    if (!res.ok) {
-      throw new Error(
-        data.error || 'AI სერვისთან დაკავშირება ვერ მოხერხდა.'
+    chatPhoto.addEventListener('change', () => {
+      setSelectedFile(chatPhoto.files[0]);
+    });
+
+    attachPhoto.addEventListener('click', () => {
+      if (!sending) chatPhoto.click();
+    });
+
+    removeChatPhoto.addEventListener('click', clearSelectedFile);
+
+    function addMsg(text, who) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + who;
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result !== 'string' || !result.includes(',')) {
+            reject(new Error('ფოტოს წაკითხვა ვერ მოხერხდა.'));
+            return;
+          }
+          resolve(result.split(',')[1]);
+        };
+
+        reader.onerror = () => reject(new Error('ფოტოს წაკითხვა ვერ მოხერხდა.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function sendToAI(question, selectedFile) {
+      let image = null;
+
+      if (selectedFile) {
+        image = {
+          mimeType: selectedFile.type,
+          data: await fileToBase64(selectedFile)
+        };
+      }
+
+      const response = await fetch('/.netlify/functions/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...chatHistory, {
+            role: 'user',
+            content: question
+          }].slice(-12),
+          image
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'AI სერვისთან დაკავშირება ვერ მოხერხდა.');
+      }
+
+      if (typeof data.answer !== 'string' || !data.answer.trim()) {
+        throw new Error('AI-მ პასუხი ვერ დააბრუნა. სცადე ხელახლა.');
+      }
+
+      return data.answer.trim();
+    }
+
+    chatForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (sending) return;
+
+      const question = chatInput.value.trim();
+      const selectedFile = pendingFile;
+
+      if (!question && !selectedFile) {
+        chatInput.focus();
+        return;
+      }
+
+      const userText = question || 'გააანალიზე ატვირთული მცენარის ფოტო.';
+
+      addMsg(
+        userText + (selectedFile ? '\n📷 ფოტო: ' + selectedFile.name : ''),
+        'user'
       );
-    }
 
-    const answer = (
-      data.answer || 'პასუხი ვერ მივიღე. სცადე თავიდან.'
-    ).trim();
+      chatInput.value = '';
+      sending = true;
 
-    loading.remove();
+      chatInput.disabled = true;
+      sendButton.disabled = true;
+      attachPhoto.disabled = true;
+      choosePhoto.disabled = true;
+      analyzeButton.disabled = true;
 
-    addMsg(answer, 'bot');
+      const loading = addMsg(
+        selectedFile ? 'ფოტოს ვაანალიზებ... 🌿' : 'ვფიქრობ... 🌿',
+        'bot'
+      );
 
-    chatHistory.push({
-      role: 'assistant',
-      content: answer
+      try {
+        const answer = await sendToAI(userText, selectedFile);
+        loading.remove();
+        addMsg(answer, 'bot');
+
+        chatHistory.push({ role: 'user', content: userText });
+        chatHistory.push({ role: 'assistant', content: answer });
+
+        if (selectedFile && pendingFile === selectedFile) {
+          clearSelectedFile();
+        }
+      } catch (error) {
+        loading.remove();
+        addMsg('შეცდომა: ' + error.message, 'bot');
+      } finally {
+        sending = false;
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        attachPhoto.disabled = false;
+        choosePhoto.disabled = false;
+        analyzeButton.disabled = false;
+        chatInput.focus();
+      }
     });
 
-    if (selectedFile && pendingFile === selectedFile) {
-      clearSelectedFile();
-    }
+    analyzeButton.addEventListener('click', () => {
+      if (!pendingFile) {
+        alert('ჯერ აირჩიე მცენარის ფოტო.');
+        return;
+      }
 
-    photoResult.style.display = 'none';
+      if (!chatInput.value.trim()) {
+        chatInput.value =
+          'გააანალიზე ეს მცენარის ფოტო. აღწერე ხილული ნიშნები, შესაძლო პრობლემები და მოვლის რჩევები.';
+      }
 
-  } catch (err) {
-    loading.remove();
-
-    const errorText = err.message === 'Failed to fetch'
-      ? 'სერვერთან დაკავშირება ვერ მოხერხდა. გადაამოწმე Netlify-ის გამოქვეყნებული ვერსია.'
-      : err.message;
-
-    addMsg('შეცდომა: ' + errorText, 'bot');
-
-    // წარუმატებელი მოთხოვნისას მომხმარებლის შეტყობინება ისტორიიდან წავშალოთ
-    const index = chatHistory.lastIndexOf(userMessage);
-
-    if (index !== -1) {
-      chatHistory.splice(index, 1);
-    }
-
-  } finally {
-    sending = false;
-
-    chatInput.disabled = false;
-    sendButton.disabled = false;
-    attachPhoto.disabled = false;
-    analyzeButton.disabled = false;
-
-    sendButton.textContent = 'გაგზავნა';
-    chatInput.focus();
-  }
-});
+      chatForm.requestSubmit();
+    });
+  </script>
+</body>
+</html>
